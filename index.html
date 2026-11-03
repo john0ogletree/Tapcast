@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Serverless Screen Share</title>
+    <!-- PeerJS CDN -->
+    <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+</head>
+<body style="background: #111; color: #fff; font-family: sans-serif; text-align: center; padding: 20px;">
+    <h2>Serverless Screen Share</h2>
+    <button id="startBtn" style="padding: 10px 20px; font-size: 16px;">Start Streaming</button>
+    <p id="shareLink" style="word-break: break-all; margin-top: 20px;"></p>
+    <video id="localVideo" autoplay playsinline muted style="width: 100%; max-width: 400px; display:none; margin-top: 15px; border-radius: 8px;"></video>
+
+    <script>
+        // Connect to the public PeerJS cloud broker (no custom server needed!)
+        const peer = new Peer(); 
+
+        peer.on('open', (id) => {
+            // Generate a viewer link pointing to this same file with the ID parameter
+            const viewerUrl = `${window.location.origin}${window.location.pathname}?view=${id}`;
+            document.getElementById('shareLink').innerHTML = `Send this link to viewers:<br><a href="${viewerUrl}" target="_blank" style="color: #4da6ff;">${viewerUrl}</a>`;
+        });
+
+        document.getElementById('startBtn').onclick = async () => {
+            try {
+                // Capture phone screen
+                const stream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 30 } });
+                const videoEl = document.getElementById('localVideo');
+                videoEl.srcObject = stream;
+                videoEl.style.display = 'block';
+
+                // Listen for incoming viewer connections
+                peer.on('connection', (conn) => {
+                    // When a viewer connects, send them the media stream
+                    peer.call(conn.peer, stream);
+                });
+
+                // Also handle incoming direct calls if initiated via URL parameters
+                peer.on('call', (call) => {
+                    call.answer(stream);
+                });
+
+            } catch (err) {
+                alert("Error sharing screen: " + err.message);
+            }
+        };
+
+        // Automatic Viewer Mode: If the URL has ?view=PEER_ID, act as viewer
+        const urlParams = new URLSearchParams(window.location.search);
+        const hostId = urlParams.get('view');
+        if (hostId) {
+            document.body.innerHTML = `<h2>Viewing Live Stream</h2><video id="remoteVideo" autoplay playsinline controls style="width: 100%; max-width: 600px; border-radius: 8px;"></video>`;
+            
+            const conn = peer.connect(hostId);
+            peer.on('call', (call) => {
+                call.answer(); // Answer without local stream
+                call.on('stream', (remoteStream) => {
+                    document.getElementById('remoteVideo').srcObject = remoteStream;
+                });
+            });
+        }
+    </script>
+</body>
+</html>
